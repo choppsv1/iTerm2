@@ -488,6 +488,11 @@ typedef enum {
 
 - (NSDictionary *)arrangementWithContents:(BOOL)includeContents;
 
+- (void)toggleTmuxZoom;
+
+// Kill the running command (if possible), print a banner, and rerun the profile's command.
+- (void)restartSession;
+
 #pragma mark - Private for use by Scripting category
 
 - (void)setSessionSpecificProfileValues:(NSDictionary *)newValues;

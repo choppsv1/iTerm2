@@ -73,7 +73,7 @@ DEFINE_STRING(findUrlsRegex,
 DEFINE_FLOAT(echoProbeDuration, 0.5, @"Terminal: Amount of time to wait while testing if echo is on (seconds)");
 DEFINE_BOOL(optionIsMetaForSpecialChars, YES, @"Terminal: Treat Option as Meta in escape codes send by typing arrow keys");
 DEFINE_BOOL(noSyncSilenceAnnoyingBellAutomatically, NO, @"Terminal: Automatically silence bell when it rings too much");
-DEFINE_BOOL(restoreWindowContents, NO, @"Terminal: Restore window contents at startup");
+DEFINE_BOOL(restoreWindowContents, YES, @"Terminal: Restore window contents at startup");
 
 #pragma mark Hotkey
 DEFINE_FLOAT(hotkeyTermAnimationDuration, 0.25, @"Hotkey: Duration in seconds of the hotkey window animation")
@@ -95,6 +95,7 @@ DEFINE_BOOL(disableAppNap, NO, @"General: Disable App Nap (change effective afte
 DEFINE_FLOAT(idleTimeSeconds, 2, @"General: Time in seconds before a session is considered idle");
 DEFINE_FLOAT(findDelaySeconds, 1, @"General: Time to wait before performing Find action on 1- or 2- character queries");
 DEFINE_BOOL(startDebugLoggingAutomatically, NO, @"General: Start debug logging automatically when iTerm2 is launched");
+DEFINE_INT(maximumBytesToProvideToServices, 100000, @"General: Maximum number of bytes of selection to provide to Services");
 
 #pragma mark tmux
 DEFINE_BOOL(tolerateUnrecognizedTmuxCommands, YES, @"Tmux Integration: Tolerate unrecognized commands from server");

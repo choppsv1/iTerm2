@@ -1300,6 +1300,34 @@ static TECObjectRef CreateTECConverterForUTF8Variants(TextEncodingVariant varian
     return [[[self substringToIndex:1] uppercaseString] stringByAppendingString:[self substringFromIndex:1]];
 }
 
++ (NSString *)stringForModifiersWithMask:(NSUInteger)keyMods {
+    NSMutableString *theKeyString = [NSMutableString string];
+    if (keyMods & NSControlKeyMask) {
+        [theKeyString appendString: @"^"];
+    }
+    if (keyMods & NSAlternateKeyMask) {
+        [theKeyString appendString: @"⌥"];
+    }
+    if (keyMods & NSShiftKeyMask) {
+        [theKeyString appendString: @"⇧"];
+    }
+    if (keyMods & NSCommandKeyMask) {
+        [theKeyString appendString: @"⌘"];
+    }
+    return theKeyString;
+}
+
++ (NSString *)uuid {
+    CFUUIDRef uuidObj = CFUUIDCreate(nil);
+    NSString *uuidString = (NSString *)CFUUIDCreateString(nil, uuidObj);
+    CFRelease(uuidObj);
+    return [uuidString autorelease];
+}
+
+- (NSString *)stringByReplacingControlCharsWithQuestionMark {
+    return [self stringByReplacingOccurrencesOfRegex:@"[\x00-\x1f\x7f]" withString:@"?"];
+}
+
 @end
 
 @implementation NSMutableString (iTerm)

@@ -38,6 +38,8 @@ typedef NS_ENUM(int, iTermPreferencesModifierTag) {
     kPreferencesModifierTagCommandAndOption = 6,  // both cmd and opt at the same time
     kPreferencesModifierTagLeftCommand = 7,
     kPreferencesModifierTagRightCommand = 8,
+
+    kPreferenceModifierTagNone = 9,  // No modifier assigned (not available for all popups)
 };
 
 // General
@@ -83,7 +85,6 @@ extern NSString *const kPreferenceKeyShowProfileName;
 extern NSString *const kPreferenceKeyDimOnlyText;
 extern NSString *const kPreferenceKeyDimmingAmount;
 extern NSString *const kPreferenceKeyDimInactiveSplitPanes;
-extern NSString *const kPreferenceKeyAnimateDimming;
 extern NSString *const kPreferenceKeyShowWindowBorder;
 extern NSString *const kPreferenceKeyHideScrollbar;
 extern NSString *const kPreferenceKeyDisableFullscreenTransparencyByDefault;
@@ -95,6 +96,7 @@ extern NSString *const kPreferenceKeyLeftOptionRemapping;
 extern NSString *const kPreferenceKeyRightOptionRemapping;
 extern NSString *const kPreferenceKeyLeftCommandRemapping;
 extern NSString *const kPreferenceKeyRightCommandRemapping;
+extern NSString *const kPreferenceKeySwitchPaneModifier;
 extern NSString *const kPreferenceKeySwitchTabModifier;
 extern NSString *const kPreferenceKeySwitchWindowModifier;
 extern NSString *const kPreferenceKeyHotkeyEnabled;
@@ -112,6 +114,7 @@ extern NSString *const kPreferenceKeyOptionClickMovesCursor;
 extern NSString *const kPreferenceKeyThreeFingerEmulatesMiddle;
 extern NSString *const kPreferenceKeyFocusFollowsMouse;
 extern NSString *const kPreferenceKeyTripleClickSelectsFullWrappedLines;
+extern NSString *const kPreferenceKeyDoubleClickPerformsSmartSelection;
 
 // Not in prefs
 // Stores the last CFBundleVersion run.
@@ -125,6 +128,7 @@ extern NSString *const kPreferenceKeyPasteSpecialChunkDelay;
 extern NSString *const kPreferenceKeyPasteSpecialSpacesPerTab;
 extern NSString *const kPreferenceKeyPasteSpecialTabTransform;
 extern NSString *const kPreferenceKeyPasteSpecialEscapeShellCharsWithBackslash;
+extern NSString *const kPreferenceKeyPasteSpecialConvertUnicodePunctuation;
 extern NSString *const kPreferenceKeyPasteSpecialConvertDosNewlines;
 extern NSString *const kPreferenceKeyPasteSpecialRemoveControlCodes;
 extern NSString *const kPreferenceKeyPasteSpecialBracketedPasteMode;

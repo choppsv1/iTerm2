@@ -35,51 +35,22 @@
 @class SplitSelectionView;
 @class SessionTitleView;
 
-@interface SessionView : NSView <SessionTitleViewDelegate> {
-    PTYSession* session_;
-    BOOL dim_;
-    BOOL backgroundDimmed_;
+@interface SessionView : NSView <SessionTitleViewDelegate>
+@property(nonatomic, retain) PTYSession *session;
+// Unique per-process id of view, used for ordering them in PTYTab.
+@property(nonatomic, assign) int viewId;
 
-    float currentDimmingAmount_;
-    NSDate* previousUpdate_;
-    float changePerSecond_;
-    float targetDimmingAmount_;
-    NSTimer* timer_;
-    BOOL shuttingDown_;
-
-    // Find window
-    FindViewController* findView_;
-
-    // Unique per-process id of view, used for ordering them in PTYTab.
-    int viewId_;
-
-    // Saved size for unmaximizing.
-    NSSize savedSize_;
-
-    // When moving a pane, a view is put over all sessions to help the user
-    // choose how to split the destination.
-    SplitSelectionView *splitSelectionView_;
-
-    BOOL showTitle_;
-    SessionTitleView *title_;
-	NSCursor *cursor_;
-}
+// If a modifier+digit switches panes, this is the value of digit. Used to show in title bar.
+@property(nonatomic, assign) int ordinal;
 
 + (double)titleHeight;
 + (NSDate*)lastResizeDate;
 + (void)windowDidResize;
 - (id)initWithFrame:(NSRect)frame session:(PTYSession*)session;
-- (void)dealloc;
-- (PTYSession*)session;
-- (void)setSession:(PTYSession*)session;
 - (void)setDimmed:(BOOL)isDimmed;
-- (void)cancelTimers;
 - (FindViewController*)findViewController;
-- (int)viewId;
-- (void)setViewId:(int)id;
 - (void)setBackgroundDimmed:(BOOL)backgroundDimmed;
 - (void)updateDim;
-- (BOOL)backgroundDimmed;
 - (void)saveFrameSize;
 - (void)restoreFrameSize;
 - (void)setSplitSelectionMode:(SplitSelectionMode)mode move:(BOOL)move;

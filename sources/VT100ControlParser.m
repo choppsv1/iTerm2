@@ -21,7 +21,8 @@ void ParseControl(unsigned char *datap,
                   CVector *incidentals,
                   VT100Token *token,
                   NSStringEncoding encoding,
-                  int tmuxCodeWrapCount) {
+                  int tmuxCodeWrapCount,
+                  NSMutableDictionary *savedState) {
     if (tmuxCodeWrapCount && datalen >= 2 && datap[0] == ESC && datap[1] == '\\') {
         token->type = DCS_END_TMUX_CODE_WRAP;
         *rmlen = 2;
@@ -34,11 +35,13 @@ void ParseControl(unsigned char *datap,
                         incidentals:incidentals
                               token:token];
     } else if (isXTERM(datap, datalen)) {
-        [VT100XtermParser decodeBytes:datap
-                               length:datalen
-                            bytesUsed:rmlen
-                                token:token
-                             encoding:encoding];
+        iTermParserContext context = iTermParserContextMake(datap, datalen);
+        [VT100XtermParser decodeFromContext:&context
+                                incidentals:incidentals
+                                      token:token
+                                   encoding:encoding
+                                 savedState:savedState];
+        *rmlen = context.rmlen;
     } else if (isANSI(datap, datalen)) {
         [VT100AnsiParser decodeBytes:datap
                               length:datalen

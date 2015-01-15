@@ -28,6 +28,7 @@
 #import "iTermTabBarControlView.h"
 #import "iTermURLSchemeController.h"
 #import "iTermWarning.h"
+#import "iTermWindowShortcutLabelTitlebarAccessoryViewController.h"
 #import "MovePaneController.h"
 #import "NSScreen+iTerm.h"
 #import "NSStringITerm.h"
@@ -289,6 +290,8 @@ static const CGFloat kHorizontalTabBarHeight = 22;
 
     // Should the toolbelt be visible?
     BOOL shouldShowToolbelt_;
+
+    iTermWindowShortcutLabelTitlebarAccessoryViewController *_shortcutAccessoryViewController;
 }
 
 @synthesize shouldShowToolbelt = shouldShowToolbelt_;
@@ -695,7 +698,17 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     wellFormed_ = YES;
     [[self window] setRestorable:YES];
     [[self window] setRestorationClass:[PseudoTerminalRestorer class]];
-    self.terminalGuid = [[NSString stringWithFormat:@"pty-%@", [ProfileModel freshGuid]] retain];
+    self.terminalGuid = [[NSString stringWithFormat:@"pty-%@", [NSString uuid]] retain];
+
+    if ([self.window respondsToSelector:@selector(addTitlebarAccessoryViewController:)]) {
+        _shortcutAccessoryViewController =
+            [[iTermWindowShortcutLabelTitlebarAccessoryViewController alloc] initWithNibName:@"iTermWindowShortcutAccessoryView"
+                                                                                      bundle:nil];
+    }
+    if ((self.window.styleMask & NSTitledWindowMask) && _shortcutAccessoryViewController) {
+        [self.window addTitlebarAccessoryViewController:_shortcutAccessoryViewController];
+    }
+    _shortcutAccessoryViewController.ordinal = number_ + 1;
 }
 
 - (void)finishToolbeltInitialization {
@@ -724,11 +737,6 @@ static const CGFloat kHorizontalTabBarHeight = 22;
 
     // Do not assume that [self window] is valid here. It may have been freed.
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-
-    // Cancel any SessionView timers.
-    for (PTYSession* aSession in [self allSessions]) {
-        [[aSession view] cancelTimers];
-    }
 
     // Release all our sessions
     NSTabViewItem *aTabViewItem;
@@ -759,6 +767,7 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     [_terminalGuid release];
     [lastArrangement_ release];
     [_divisionView release];
+    [_shortcutAccessoryViewController release];
     [super dealloc];
 }
 
@@ -996,11 +1005,13 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     return nil;
 }
 
-- (NSScreen*)screen
-{
+- (NSScreen*)screen {
     NSArray* screens = [NSScreen screens];
+    if (!haveScreenPreference_) {
+        return self.window.deepestScreen;
+    }
     if ([screens count] > screenNumber_) {
-        return [screens objectAtIndex:screenNumber_];
+        return screens[screenNumber_];
     } else {
         return [NSScreen mainScreen];
     }
@@ -1388,6 +1399,22 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     }
 }
 
+- (IBAction)restartSession:(id)sender {
+    [self restartSessionWithConfirmation:self.currentSession];
+}
+
+- (void)restartSessionWithConfirmation:(PTYSession *)aSession {
+    [[self retain] autorelease];
+    NSAlert *alert = [NSAlert alertWithMessageText:@"Restart session?"
+                                     defaultButton:@"OK"
+                                   alternateButton:@"Cancel"
+                                       otherButton:nil
+                         informativeTextWithFormat:@"Running jobs will be killed."];
+    if (aSession.exited || [alert runModal] == NSAlertDefaultReturn) {
+        [self.currentSession restartSession];
+    }
+}
+
 - (IBAction)previousTab:(id)sender {
     [TABVIEW previousTab:sender];
 }
@@ -1457,7 +1484,12 @@ static const CGFloat kHorizontalTabBarHeight = 22;
             tmuxId = [NSString stringWithFormat:@" [%@]",
                       [[[self currentSession] tmuxController] clientName]];
         }
-        title = [NSString stringWithFormat:@"%d. %@%@", number_+1, title, tmuxId];
+        NSString *windowNumber = @"";
+        if (!_shortcutAccessoryViewController ||
+            !(self.window.styleMask & NSTitledWindowMask)) {
+            windowNumber = [NSString stringWithFormat:@"%d. ", number_ + 1];
+        }
+        title = [NSString stringWithFormat:@"%@%@%@", windowNumber, title, tmuxId];
     }
 
     // In bug 2593, we see a crazy thing where setting the window title right
@@ -1949,6 +1981,7 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     for (PTYSession *aSession in [tab sessions]) {
         [tmuxController registerSession:aSession withPane:[aSession tmuxPane] inWindow:window];
         [aSession setTmuxController:tmuxController];
+        [self setDimmingForSession:aSession];
     }
     [self endTmuxOriginatedResize];
 }
@@ -2310,8 +2343,9 @@ static const CGFloat kHorizontalTabBarHeight = 22;
                                                       userInfo:nil];
 }
 
-- (void)windowDidBecomeKey:(NSNotification *)aNotification
-{
+- (void)windowDidBecomeKey:(NSNotification *)aNotification {
+    [self.ptyWindow turnOffVibrancyInTitleBar];
+    _shortcutAccessoryViewController.isMain = YES;
     if (!_isHotKeyWindow) {
         [self maybeHideHotkeyWindow];
     }
@@ -2622,8 +2656,7 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     [self canonicalizeWindowFrame];
 }
 
-- (void)windowDidResignKey:(NSNotification *)aNotification
-{
+- (void)windowDidResignKey:(NSNotification *)aNotification {
     for (PTYSession *aSession in [self allSessions]) {
         if ([[aSession textview] isFindingCursor]) {
             [[aSession textview] endFindCursor];
@@ -2732,8 +2765,12 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     }
 }
 
-- (void)windowDidResignMain:(NSNotification *)aNotification
-{
+- (void)windowDidBecomeMain:(NSNotification *)notification {
+    _shortcutAccessoryViewController.isMain = YES;
+}
+
+- (void)windowDidResignMain:(NSNotification *)aNotification {
+    _shortcutAccessoryViewController.isMain = NO;
     PtyLog(@"%s(%d):-[PseudoTerminal windowDidResignMain:%@]",
           __FILE__, __LINE__, aNotification);
     [self maybeHideHotkeyWindow];
@@ -3136,6 +3173,9 @@ static const CGFloat kHorizontalTabBarHeight = 22;
         oldFrame_ = self.window.frame;
         oldFrameSizeIsBogus_ = NO;
         savedWindowType_ = windowType_;
+        if ([_shortcutAccessoryViewController respondsToSelector:@selector(removeFromParentViewController)]) {
+            [_shortcutAccessoryViewController removeFromParentViewController];
+        }
         windowType_ = WINDOW_TYPE_TRADITIONAL_FULL_SCREEN;
         [self.window setOpaque:NO];
         self.window.alphaValue = 0;
@@ -3154,6 +3194,9 @@ static const CGFloat kHorizontalTabBarHeight = 22;
             oldFrame_.size = [self preferredWindowFrameToPerfectlyFitCurrentSessionInInitialConfiguration];
         }
         [self.window setFrame:oldFrame_ display:YES];
+        if ([self.window respondsToSelector:@selector(addTitlebarAccessoryViewController:)]) {
+            [self.window addTitlebarAccessoryViewController:_shortcutAccessoryViewController];
+        }
         PtyLog(@"toggleFullScreenMode - allocate new terminal");
     }
     [self.window setHasShadow:(windowType_ == WINDOW_TYPE_NORMAL)];
@@ -3709,8 +3752,8 @@ static const CGFloat kHorizontalTabBarHeight = 22;
         [[aSession textview] setNeedsDisplay:YES];
         [aSession updateDisplay];
         [aSession scheduleUpdateIn:kFastTimerIntervalSec];
-                [self setDimmingForSession:aSession];
-                [[aSession view] setBackgroundDimmed:![[self window] isKeyWindow]];
+        [self setDimmingForSession:aSession];
+        [[aSession view] setBackgroundDimmed:![[self window] isKeyWindow]];
     }
 
     for (PTYSession *session in [self allSessions]) {
@@ -4233,15 +4276,22 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     return TABVIEW != nil;
 }
 
-- (void)fillPath:(NSBezierPath*)path
-{
-    if ([tabBarControl isHidden]) {
+- (void)fillPath:(NSBezierPath*)path {
+    if ([tabBarControl isHidden] && ![self anyFullScreen]) {
         [[NSColor windowBackgroundColor] set];
         [path fill];
         [[NSColor darkGrayColor] set];
         [path stroke];
     } else {
-      [tabBarControl fillPath:path];
+        [tabBarControl fillPath:path];
+    }
+}
+
+- (NSColor *)accessoryTextColor {
+    if ([tabBarControl isHidden] && ![self anyFullScreen]) {
+        return [NSColor blackColor];
+    } else {
+        return [tabBarControl accessoryTextColor];
     }
 }
 
@@ -4667,7 +4717,9 @@ static const CGFloat kHorizontalTabBarHeight = 22;
 
 - (void)toggleMaximizeActivePane
 {
-    if ([[self currentTab] hasMaximizedPane]) {
+    if (self.currentTab.activeSession.isTmuxClient) {
+        [self.currentTab.activeSession toggleTmuxZoom];
+    } else if ([[self currentTab] hasMaximizedPane]) {
         [[self currentTab] unmaximize];
     } else {
         [[self currentTab] maximize];
@@ -4826,7 +4878,9 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     [[self currentTab] recheckBlur];
     [[self currentTab] numberOfSessionsDidChange];
     [self setDimmingForSession:targetSession];
-    [sessionView updateDim];
+    for (PTYSession *session in self.currentTab.sessions) {
+        [session.view updateDim];
+    }
     newSession.tabColor = tabColor;
     [self updateTabColors];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"iTermNumberOfSessionsDidChange"
@@ -5028,23 +5082,37 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     frame.size = winSize;
     frame.origin.y -= heightChange;
 
-    // Ok, so some silly things are happening here. Issue 2096 reported that
-    // when a session-initiated resize grows a window, the window's background
-    // color becomes almost solid (it's actually a very gentle gradient between
-    // two almost identical grays). For reasons that escape me, this happens if
-    // the window's content view does not have a subview with an autoresizing
-    // mask or autoresizing is off for the content view. I'm sure this isn't
-    // the best fix, but it's all I could find: I turn off the autoresizing
-    // mask for the TABVIEW (which I really don't want autoresized--it needs to
-    // be done by hand in fitTabToWindow), and add a silly one pixel view
-    // that lives just long enough to be resized in this function. I don't know
-    // why it works but it does.
-    NSView *bugFixView = [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1, 1)] autorelease];
-    bugFixView.autoresizingMask = (NSViewWidthSizable | NSViewHeightSizable);
-    [[[self window] contentView] addSubview:bugFixView];
-    NSUInteger savedMask = TABVIEW.autoresizingMask;
-    TABVIEW.autoresizingMask = 0;
-
+    NSView *bugFixView = nil;
+    NSUInteger savedMask = 0;
+    // The following code doesn't play nicely with the constraints that are
+    // unfortunately added by the system in 10.10 when using title bar
+    // accessories. The addition of title bar accessories forces a bunch of
+    // constraints to exist. There was a bug where when creating a tmux window
+    // we'd set the window frame to one value (e.g., 378pt tall);
+    // windowDidResize would be called for 378pt. Then constraints would decide
+    // that's not cool and windowDidResize would be called again (e.g., with
+    // 399pt). No matter how many times you call setFrame:display:,
+    // windowDidResize would get called twice, and you literally couldn't set
+    // the window to certain heights. It was related to this bugfix view,
+    // somehow. Better not to have it and live with screwed up title colors.
+    if (!_shortcutAccessoryViewController) {
+        // Ok, so some silly things are happening here. Issue 2096 reported that
+        // when a session-initiated resize grows a window, the window's background
+        // color becomes almost solid (it's actually a very gentle gradient between
+        // two almost identical grays). For reasons that escape me, this happens if
+        // the window's content view does not have a subview with an autoresizing
+        // mask or autoresizing is off for the content view. I'm sure this isn't
+        // the best fix, but it's all I could find: I turn off the autoresizing
+        // mask for the TABVIEW (which I really don't want autoresized--it needs to
+        // be done by hand in fitTabToWindow), and add a silly one pixel view
+        // that lives just long enough to be resized in this function. I don't know
+        // why it works but it does.
+        bugFixView = [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1, 1)] autorelease];
+        bugFixView.autoresizingMask = (NSViewWidthSizable | NSViewHeightSizable);
+        [[[self window] contentView] addSubview:bugFixView];
+        savedMask = TABVIEW.autoresizingMask;
+        TABVIEW.autoresizingMask = 0;
+    }
     // Set the frame for X-of-screen windows. The size doesn't change
     // for _PARTIAL window types.
     switch (windowType_) {
@@ -5103,9 +5171,11 @@ static const CGFloat kHorizontalTabBarHeight = 22;
     DLog(@"After frame:byConstrainingToScreen: %@", NSStringFromRect(frame));
     [[self window] setFrame:frame display:YES];
 
-    // Restore TABVIEW's autoresizingMask and remove the stupid bugFixView.
-    TABVIEW.autoresizingMask = savedMask;
-    [bugFixView removeFromSuperview];
+    if (bugFixView) {
+        // Restore TABVIEW's autoresizingMask and remove the stupid bugFixView.
+        TABVIEW.autoresizingMask = savedMask;
+        [bugFixView removeFromSuperview];
+    }
     [[[self window] contentView] setAutoresizesSubviews:YES];
 
     PtyLog(@"fitWindowToTabs - refresh textview");
@@ -6497,6 +6567,8 @@ int aGlobalVariable;
         } else {
             result = NO;
         }
+    } else if ([item action] == @selector(restartSession:)) {
+        return YES;
     } else if ([item action] == @selector(resetCharset:)) {
         result = ![[[self currentSession] screen] allCharacterSetPropertiesHaveDefaultValues];
     } else if ([item action] == @selector(openCommandHistory:)) {
@@ -6853,6 +6925,9 @@ int aGlobalVariable;
       dockTile = [[NSApplication sharedApplication] dockTile];
     }
     int count = [[dockTile badgeLabel] intValue];
+    if (count == 999) {
+        return;
+    }
     ++count;
     [dockTile setBadgeLabel:[NSString stringWithFormat:@"%d", count]];
     [self.window.dockTile setShowsApplicationBadge:YES];
@@ -6977,13 +7052,17 @@ int aGlobalVariable;
         // there is nothing to save.
         return;
     }
-    if ([self isHotKeyWindow] || [self allTabsAreTmuxTabs]) {
-        // Don't save and restore hotkey windows or tmux windows. The
-        // OS only restores windows that are in the window order, and
-        // hotkey windows may be ordered in or out, depending on
-        // whether they were in use. So they get a special path for
-        // restoration where the arrangement is saved in user
-        // defaults.
+    // Don't save and restore the hotkey window. The OS only restores windows that are in the window
+    // order, and hotkey windows may be ordered in or out, depending on whether they were in use. So
+    // they get a special path for restoration where the arrangement is saved in user defaults.
+    if ([self isHotKeyWindow]) {
+        [[self ptyWindow] setRestoreState:nil];
+        [[HotkeyWindowController sharedInstance] saveHotkeyWindowState];
+        return;
+    }
+
+    // Don't restore tmux windows since their canonical state is on the server.
+    if ([self allTabsAreTmuxTabs]) {
         [[self ptyWindow] setRestoreState:nil];
         return;
     }

@@ -20,69 +20,67 @@ static const double kTitleHeight = 22;
 // Last time any window was resized TODO(georgen):it would be better to track per window.
 static NSDate* lastResizeDate_;
 
-@interface SessionView () < iTermAnnouncementDelegate>
+@interface SessionView () <iTermAnnouncementDelegate>
 @end
 
 @implementation SessionView {
     NSMutableArray *_announcements;
     BOOL _inDealloc;
     iTermAnnouncementViewController *_currentAnnouncement;
+
+    BOOL _dim;
+    BOOL _backgroundDimmed;
+
+    // Find window
+    FindViewController *_findView;
+
+    // Saved size for unmaximizing.
+    NSSize _savedSize;
+
+    // When moving a pane, a view is put over all sessions to help the user
+    // choose how to split the destination.
+    SplitSelectionView *_splitSelectionView;
+
+    BOOL _showTitle;
+    SessionTitleView *_title;
 }
 
-+ (double)titleHeight
-{
++ (double)titleHeight {
     return kTitleHeight;
 }
 
-+ (void)initialize
-{
++ (void)initialize {
     lastResizeDate_ = [[NSDate date] retain];
 }
 
-+ (void)windowDidResize
-{
++ (void)windowDidResize {
     [lastResizeDate_ release];
     lastResizeDate_ = [[NSDate date] retain];
 }
 
-- (void)markUpdateTime
-{
-    [previousUpdate_ release];
-    previousUpdate_ = [[NSDate date] retain];
-}
-
-- (void)clearUpdateTime
-{
-    [previousUpdate_ release];
-    previousUpdate_ = nil;
-}
-
-- (void)_initCommon
-{
-    [self registerForDraggedTypes:[NSArray arrayWithObjects:@"iTermDragPanePBType", @"com.iterm2.psm.controlitem", nil]];
+- (void)_initCommon {
+    [self registerForDraggedTypes:@[ @"iTermDragPanePBType", @"com.iterm2.psm.controlitem" ]];
     [lastResizeDate_ release];
     lastResizeDate_ = [[NSDate date] retain];
     _announcements = [[NSMutableArray alloc] init];
 }
 
-- (id)initWithFrame:(NSRect)frame
-{
+- (id)initWithFrame:(NSRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
         [self _initCommon];
-        findView_ = [[FindViewController alloc] initWithNibName:@"FindView" bundle:nil];
-        [[findView_ view] setHidden:YES];
-        [self addSubview:[findView_ view]];
+        _findView = [[FindViewController alloc] initWithNibName:@"FindView" bundle:nil];
+        [[_findView view] setHidden:YES];
+        [self addSubview:[_findView view]];
         NSRect aRect = [self frame];
-        [findView_ setFrameOrigin:NSMakePoint(aRect.size.width - [[findView_ view] frame].size.width - 30,
-                                                     aRect.size.height - [[findView_ view] frame].size.height)];
-        viewId_ = nextViewId++;
+        [_findView setFrameOrigin:NSMakePoint(aRect.size.width - [[_findView view] frame].size.width - 30,
+                                                     aRect.size.height - [[_findView view] frame].size.height)];
+        _viewId = nextViewId++;
     }
     return self;
 }
 
-- (id)initWithFrame:(NSRect)frame session:(PTYSession*)session
-{
+- (id)initWithFrame:(NSRect)frame session:(PTYSession*)session {
     self = [self initWithFrame:frame];
     if (self) {
         [self _initCommon];
@@ -91,26 +89,23 @@ static NSDate* lastResizeDate_;
     return self;
 }
 
-- (void)addSubview:(NSView *)aView
-{
+- (void)addSubview:(NSView *)aView {
     static BOOL running;
     BOOL wasRunning = running;
     running = YES;
-    if (!wasRunning && findView_ && aView != [findView_ view]) {
-        [super addSubview:aView positioned:NSWindowBelow relativeTo:[findView_ view]];
+    if (!wasRunning && _findView && aView != [_findView view]) {
+        [super addSubview:aView positioned:NSWindowBelow relativeTo:[_findView view]];
     } else {
         [super addSubview:aView];
     }
     running = NO;
 }
 
-- (void)dealloc
-{
+- (void)dealloc {
     _inDealloc = YES;
-    [previousUpdate_ release];
-    [title_ removeFromSuperview];
+    [_title removeFromSuperview];
     [self unregisterDraggedTypes];
-    [session_ release];
+    [_session release];
     [_currentAnnouncement dismiss];
     [_currentAnnouncement release];
     [_announcements release];
@@ -120,73 +115,26 @@ static NSDate* lastResizeDate_;
     [super dealloc];
 }
 
-- (PTYSession*)session
-{
-    return session_;
+- (void)setSession:(PTYSession*)session {
+    [_session autorelease];
+    _session = [session retain];
+    _session.colorMap.dimmingAmount = [self adjustedDimmingAmount];
 }
 
-- (void)setSession:(PTYSession*)session
-{
-    [session_ autorelease];
-    session_ = [session retain];
-    session_.colorMap.dimmingAmount = currentDimmingAmount_;
+- (void)_dimShadeToDimmingAmount:(float)newDimmingAmount {
+    _session.colorMap.dimmingAmount = newDimmingAmount;
 }
 
-- (void)fadeAnimation
-{
-    timer_ = nil;
-    float elapsed = [[NSDate date] timeIntervalSinceDate:previousUpdate_];
-    float newDimmingAmount = currentDimmingAmount_ + elapsed * changePerSecond_;
-    [self clearUpdateTime];
-    if ((changePerSecond_ > 0 && newDimmingAmount > targetDimmingAmount_) ||
-        (changePerSecond_ < 0 && newDimmingAmount < targetDimmingAmount_)) {
-        currentDimmingAmount_ = targetDimmingAmount_;
-        session_.colorMap.dimmingAmount = targetDimmingAmount_;
-    } else {
-        session_.colorMap.dimmingAmount = newDimmingAmount;
-        currentDimmingAmount_ = newDimmingAmount;
-        [self markUpdateTime];
-        timer_ = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
-                                                  target:self
-                                                selector:@selector(fadeAnimation)
-                                                userInfo:nil
-                                                 repeats:NO];
-    }
-}
-
-- (void)_dimShadeToDimmingAmount:(float)newDimmingAmount
-{
-    targetDimmingAmount_ = newDimmingAmount;
-    [self markUpdateTime];
-    const double kAnimationDuration = 0.1;
-    if ([iTermPreferences boolForKey:kPreferenceKeyAnimateDimming]) {
-        changePerSecond_ = (targetDimmingAmount_ - currentDimmingAmount_) / kAnimationDuration;
-        if (changePerSecond_ == 0) {
-            // Nothing to do.
-            return;
-        }
-        if (timer_) {
-            [timer_ invalidate];
-            timer_ = nil;
-        }
-        [self fadeAnimation];
-    } else {
-        session_.colorMap.dimmingAmount = newDimmingAmount;
-    }
-}
-
-- (double)dimmedDimmingAmount
-{
+- (double)dimmedDimmingAmount {
     return [iTermPreferences floatForKey:kPreferenceKeyDimmingAmount];
 }
 
-- (double)adjustedDimmingAmount
-{
+- (double)adjustedDimmingAmount {
     int x = 0;
-    if (dim_) {
+    if (_dim) {
         x++;
     }
-    if (backgroundDimmed_) {
+    if (_backgroundDimmed) {
         x++;
     }
     double scale[] = { 0, 1.0, 1.5 };
@@ -199,53 +147,35 @@ static NSDate* lastResizeDate_;
     return amount;
 }
 
-- (void)updateDim
-{
+- (void)updateDim {
     double amount = [self adjustedDimmingAmount];
 
     [self _dimShadeToDimmingAmount:amount];
-    [title_ setDimmingAmount:amount];
+    [_title setDimmingAmount:amount];
 }
 
-- (void)setDimmed:(BOOL)isDimmed
-{
-    if (shuttingDown_) {
+- (void)setDimmed:(BOOL)isDimmed {
+    if (isDimmed == _dim) {
         return;
     }
-    if (isDimmed == dim_) {
-        return;
-    }
-    if (session_) {
-        dim_ = isDimmed;
+    if (_session) {
+        _dim = isDimmed;
         [self updateDim];
     } else {
-        dim_ = isDimmed;
-        currentDimmingAmount_ = [self adjustedDimmingAmount];
+        _dim = isDimmed;
     }
 }
 
-- (void)setBackgroundDimmed:(BOOL)backgroundDimmed
-{
-    BOOL orig = backgroundDimmed_;
+- (void)setBackgroundDimmed:(BOOL)backgroundDimmed {
+    BOOL orig = _backgroundDimmed;
     if ([iTermPreferences boolForKey:kPreferenceKeyDimBackgroundWindows]) {
-        backgroundDimmed_ = backgroundDimmed;
+        _backgroundDimmed = backgroundDimmed;
     } else {
-        backgroundDimmed_ = NO;
+        _backgroundDimmed = NO;
     }
-    if (backgroundDimmed_ != orig) {
+    if (_backgroundDimmed != orig) {
         [self updateDim];
     }
-}
-
-- (BOOL)backgroundDimmed
-{
-    return backgroundDimmed_;
-}
-
-- (void)cancelTimers
-{
-    shuttingDown_ = YES;
-    [timer_ invalidate];
 }
 
 // See comments in -[PTYTextView updateTrackingAreas] about why this is done.
@@ -267,16 +197,15 @@ static NSDate* lastResizeDate_;
 }
 
 - (void)mouseEntered:(NSEvent *)theEvent {
-    [[session_ textview] mouseEntered:theEvent];
+    [[_session textview] mouseEntered:theEvent];
 }
 
 - (void)mouseExited:(NSEvent *)theEvent {
-    [[session_ textview] mouseEntered:theEvent];
+    [[_session textview] mouseEntered:theEvent];
 }
 
-- (void)rightMouseDown:(NSEvent*)event
-{
-    if (!splitSelectionView_) {
+- (void)rightMouseDown:(NSEvent*)event {
+    if (!_splitSelectionView) {
         static int inme;
         if (inme) {
             // Avoid infinite recursion. Not quite sure why this happens, but a call
@@ -292,12 +221,11 @@ static NSDate* lastResizeDate_;
 }
 
 
-- (void)mouseDown:(NSEvent*)event
-{
+- (void)mouseDown:(NSEvent*)event {
     static int inme;
     if (inme) {
         // Avoid infinite recursion. Not quite sure why this happens, but a call
-        // to [title_ mouseDown:] or [super mouseDown:] will sometimes (after a
+        // to [_title mouseDown:] or [super mouseDown:] will sometimes (after a
         // few steps through the OS) bring you back here. It only happens
         // consistently when dragging the pane title bar, but it happens inconsitently
         // with clicks in the title bar too.
@@ -314,13 +242,13 @@ static NSDate* lastResizeDate_;
          NSStringFromPoint(p),
          NSStringFromPoint(windowRect.origin),
          NSStringFromPoint(pointInSessionView));
-    if (title_ && NSPointInRect(pointInSessionView, [title_ frame])) {
-        [title_ mouseDown:event];
+    if (_title && NSPointInRect(pointInSessionView, [_title frame])) {
+        [_title mouseDown:event];
         --inme;
         return;
     }
-    if (splitSelectionView_) {
-        [splitSelectionView_ mouseDown:event];
+    if (_splitSelectionView) {
+        [_splitSelectionView mouseDown:event];
     } else if (NSPointInRect(pointInSessionView, [[[self session] scrollview] frame]) &&
                [[[self session] textview] mouseDownImpl:event]) {
         [super mouseDown:event];
@@ -328,87 +256,71 @@ static NSDate* lastResizeDate_;
     --inme;
 }
 
-- (FindViewController*)findViewController
-{
-    return findView_;
+- (FindViewController*)findViewController {
+    return _findView;
 }
 
-- (void)setViewId:(int)viewId
-{
-    viewId_ = viewId;
-}
-
-- (int)viewId
-{
-    return viewId_;
-}
-
-- (void)setFrameSize:(NSSize)frameSize
-{
+- (void)setFrameSize:(NSSize)frameSize {
     [self updateAnnouncementFrame];
     [super setFrameSize:frameSize];
     if (frameSize.width < 340) {
-        [[findView_ view] setFrameSize:NSMakeSize(MAX(150, frameSize.width - 50),
-                                                  [[findView_ view] frame].size.height)];
-        [findView_ setFrameOrigin:NSMakePoint(frameSize.width - [[findView_ view] frame].size.width - 30,
-                                              frameSize.height - [[findView_ view] frame].size.height)];
+        [[_findView view] setFrameSize:NSMakeSize(MAX(150, frameSize.width - 50),
+                                                  [[_findView view] frame].size.height)];
+        [_findView setFrameOrigin:NSMakePoint(frameSize.width - [[_findView view] frame].size.width - 30,
+                                              frameSize.height - [[_findView view] frame].size.height)];
     } else {
-        [[findView_ view] setFrameSize:NSMakeSize(290,
-                                                  [[findView_ view] frame].size.height)];
-        [findView_ setFrameOrigin:NSMakePoint(frameSize.width - [[findView_ view] frame].size.width - 30,
-                                              frameSize.height - [[findView_ view] frame].size.height)];
+        [[_findView view] setFrameSize:NSMakeSize(290,
+                                                  [[_findView view] frame].size.height)];
+        [_findView setFrameOrigin:NSMakePoint(frameSize.width - [[_findView view] frame].size.width - 30,
+                                              frameSize.height - [[_findView view] frame].size.height)];
     }
 }
 
-+ (NSDate*)lastResizeDate
-{
++ (NSDate*)lastResizeDate {
     return lastResizeDate_;
 }
 
 // This is called as part of the live resizing protocol when you let up the mouse button.
-- (void)viewDidEndLiveResize
-{
+- (void)viewDidEndLiveResize {
     [lastResizeDate_ release];
     lastResizeDate_ = [[NSDate date] retain];
 }
 
-- (void)saveFrameSize
-{
-    savedSize_ = [self frame].size;
+- (void)saveFrameSize {
+    _savedSize = [self frame].size;
 }
 
-- (void)restoreFrameSize
-{
-    [self setFrameSize:savedSize_];
+- (void)restoreFrameSize {
+    [self setFrameSize:_savedSize];
 }
 
 - (void)_createSplitSelectionView:(BOOL)cancelOnly move:(BOOL)move {
-    splitSelectionView_ = [[SplitSelectionView alloc] initAsCancelOnly:cancelOnly
+    _splitSelectionView = [[SplitSelectionView alloc] initAsCancelOnly:cancelOnly
                                                              withFrame:NSMakeRect(0,
                                                                                   0,
                                                                                   [self frame].size.width,
                                                                                   [self frame].size.height)
-                                                           withSession:session_
+                                                           withSession:_session
                                                               delegate:[MovePaneController sharedInstance]
                                                                   move:move];
-    [splitSelectionView_ setFrameOrigin:NSMakePoint(0, 0)];
-    [splitSelectionView_ setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
-    [self addSubview:splitSelectionView_];
-    [splitSelectionView_ release];
+    [_splitSelectionView setFrameOrigin:NSMakePoint(0, 0)];
+    [_splitSelectionView setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
+    [self addSubview:_splitSelectionView];
+    [_splitSelectionView release];
 }
 
 - (void)setSplitSelectionMode:(SplitSelectionMode)mode move:(BOOL)move {
     switch (mode) {
         case kSplitSelectionModeOn:
-            if (splitSelectionView_) {
+            if (_splitSelectionView) {
                 return;
             }
             [self _createSplitSelectionView:NO move:move];
             break;
 
         case kSplitSelectionModeOff:
-            [splitSelectionView_ removeFromSuperview];
-            splitSelectionView_ = nil;
+            [_splitSelectionView removeFromSuperview];
+            _splitSelectionView = nil;
             break;
 
         case kSplitSelectionModeCancel:
@@ -418,17 +330,16 @@ static NSDate* lastResizeDate_;
 }
 
 - (void)drawBackgroundInRect:(NSRect)rect {
-    [session_ textViewDrawBackgroundImageInView:self
+    [_session textViewDrawBackgroundImageInView:self
                                        viewRect:rect
                          blendDefaultBackground:YES];
 }
 
-- (void)drawRect:(NSRect)dirtyRect
-{
+- (void)drawRect:(NSRect)dirtyRect {
     // Fill in background color in the area around a scrollview if it's smaller
     // than the session view.
     [super drawRect:dirtyRect];
-    PTYScrollView *scrollView = [session_ scrollview];
+    PTYScrollView *scrollView = [_session scrollview];
     NSRect svFrame = [scrollView frame];
     if (svFrame.size.width < self.frame.size.width) {
         double widthDiff = self.frame.size.width - svFrame.size.width;
@@ -450,7 +361,7 @@ static NSDate* lastResizeDate_;
 }
 
 - (NSRect)contentRect {
-    if (showTitle_) {
+    if (_showTitle) {
         return NSMakeRect(0, 0, self.frame.size.width, self.frame.size.height - kTitleHeight);
     } else {
         return self.frame;
@@ -459,23 +370,21 @@ static NSDate* lastResizeDate_;
 
 #pragma mark NSDraggingSource protocol
 
-- (void)draggedImage:(NSImage *)draggedImage movedTo:(NSPoint)screenPoint
-{
+- (void)draggedImage:(NSImage *)draggedImage movedTo:(NSPoint)screenPoint {
     [[NSCursor closedHandCursor] set];
 }
 
-- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal
-{
+- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal {
     return (isLocal ? NSDragOperationMove : NSDragOperationNone);
 }
 
-- (BOOL)ignoreModifierKeysWhileDragging
-{
+- (BOOL)ignoreModifierKeysWhileDragging {
     return YES;
 }
 
-- (void)draggedImage:(NSImage *)anImage endedAt:(NSPoint)aPoint operation:(NSDragOperation)operation
-{
+- (void)draggedImage:(NSImage *)anImage
+             endedAt:(NSPoint)aPoint
+           operation:(NSDragOperation)operation {
     if (![[MovePaneController sharedInstance] dragFailed]) {
         [[MovePaneController sharedInstance] dropInSession:nil half:kNoHalf atPoint:aPoint];
     }
@@ -483,13 +392,12 @@ static NSDate* lastResizeDate_;
 
 #pragma mark NSDraggingDestination protocol
 
-- (NSDragOperation)draggingEntered:(id < NSDraggingInfo >)sender
-{
+- (NSDragOperation)draggingEntered:(id < NSDraggingInfo >)sender {
     PTYSession *movingSession = [[MovePaneController sharedInstance] session];
     if ([[[sender draggingPasteboard] types] indexOfObject:@"com.iterm2.psm.controlitem"] != NSNotFound) {
         // Dragging a tab handle. Source is a PSMTabBarControl.
         PTYTab *theTab = (PTYTab *)[[[[PSMTabDragAssistant sharedDragAssistant] draggedCell] representedObject] identifier];
-        if (theTab == [session_ tab] || [[theTab sessions] count] > 1) {
+        if (theTab == [_session tab] || [[theTab sessions] count] > 1) {
             return NSDragOperationNone;
         }
         if (![[theTab activeSession] isCompatibleWith:[self session]]) {
@@ -504,37 +412,35 @@ static NSDate* lastResizeDate_;
         return NSDragOperationNone;
     }
     NSRect frame = [self frame];
-    splitSelectionView_ = [[SplitSelectionView alloc] initWithFrame:NSMakeRect(0,
+    _splitSelectionView = [[SplitSelectionView alloc] initWithFrame:NSMakeRect(0,
                                                                                0,
                                                                                frame.size.width,
                                                                                frame.size.height)];
-    [self addSubview:splitSelectionView_];
-    [splitSelectionView_ release];
+    [self addSubview:_splitSelectionView];
+    [_splitSelectionView release];
     [[self window] orderFront:nil];
     return NSDragOperationMove;
 }
 
-- (void)draggingExited:(id < NSDraggingInfo >)sender
-{
-    [splitSelectionView_ removeFromSuperview];
-    splitSelectionView_ = nil;
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+    [_splitSelectionView removeFromSuperview];
+    _splitSelectionView = nil;
 }
 
-- (NSDragOperation)draggingUpdated:(id < NSDraggingInfo >)sender
-{
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
     if ([[[sender draggingPasteboard] types] indexOfObject:@"iTermDragPanePBType"] != NSNotFound &&
         [[MovePaneController sharedInstance] isMovingSession:[self session]]) {
         return NSDragOperationMove;
     }
     NSPoint point = [self convertPoint:[sender draggingLocation] fromView:nil];
-    [splitSelectionView_ updateAtPoint:point];
+    [_splitSelectionView updateAtPoint:point];
     return NSDragOperationMove;
 }
 
-- (BOOL)performDragOperation:(id < NSDraggingInfo >)sender {
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
     if ([[[sender draggingPasteboard] types] indexOfObject:@"iTermDragPanePBType"] != NSNotFound) {
         if ([[MovePaneController sharedInstance] isMovingSession:[self session]]) {
-            if (session_.tab.sessions.count == 1) {
+            if (_session.tab.sessions.count == 1) {
                 // If you dragged a session from a tab with split panes onto itself then do nothing.
                 // But if you drag a session onto itself in a tab WITHOUT split panes, then move the
                 // whole window.
@@ -545,17 +451,17 @@ static NSDate* lastResizeDate_;
             [[MovePaneController sharedInstance] setDragFailed:YES];
             return NO;
         }
-        SplitSessionHalf half = [splitSelectionView_ half];
-        [splitSelectionView_ removeFromSuperview];
-        splitSelectionView_ = nil;
+        SplitSessionHalf half = [_splitSelectionView half];
+        [_splitSelectionView removeFromSuperview];
+        _splitSelectionView = nil;
         return [[MovePaneController sharedInstance] dropInSession:[self session]
                                                              half:half
                                                           atPoint:[sender draggingLocation]];
     } else {
         // Drag a tab into a split
-        SplitSessionHalf half = [splitSelectionView_ half];
-        [splitSelectionView_ removeFromSuperview];
-        splitSelectionView_ = nil;
+        SplitSessionHalf half = [_splitSelectionView half];
+        [_splitSelectionView removeFromSuperview];
+        _splitSelectionView = nil;
         PTYTab *theTab = (PTYTab *)[[[[PSMTabDragAssistant sharedDragAssistant] draggedCell] representedObject] identifier];
         return [[MovePaneController sharedInstance] dropTab:theTab
                                                   inSession:[self session]
@@ -564,118 +470,116 @@ static NSDate* lastResizeDate_;
     }
 }
 
-- (BOOL)prepareForDragOperation:(id < NSDraggingInfo >)sender
-{
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender {
     return YES;
 }
 
-- (BOOL)wantsPeriodicDraggingUpdates
-{
+- (BOOL)wantsPeriodicDraggingUpdates {
     return YES;
 }
 
-- (BOOL)showTitle
-{
-    return showTitle_;
+- (BOOL)showTitle {
+    return _showTitle;
 }
 
-- (BOOL)setShowTitle:(BOOL)value adjustScrollView:(BOOL)adjustScrollView
-{
-    if (value == showTitle_) {
+- (BOOL)setShowTitle:(BOOL)value adjustScrollView:(BOOL)adjustScrollView {
+    if (value == _showTitle) {
         return NO;
     }
-    showTitle_ = value;
-    PTYScrollView *scrollView = [session_ scrollview];
+    _showTitle = value;
+    PTYScrollView *scrollView = [_session scrollview];
     NSRect frame = [scrollView frame];
-    if (showTitle_) {
+    if (_showTitle) {
         frame.size.height -= kTitleHeight;
-        title_ = [[[SessionTitleView alloc] initWithFrame:NSMakeRect(0,
+        _title = [[[SessionTitleView alloc] initWithFrame:NSMakeRect(0,
                                                                      self.frame.size.height - kTitleHeight,
                                                                      self.frame.size.width,
                                                                      kTitleHeight)] autorelease];
         if (adjustScrollView) {
-            [title_ setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+            [_title setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
         }
-        title_.delegate = self;
-        [self addSubview:title_];
+        _title.delegate = self;
+        [_title setDimmingAmount:[self adjustedDimmingAmount]];
+        [self addSubview:_title];
     } else {
         frame.size.height += kTitleHeight;
-        [title_ removeFromSuperview];
-        title_ = nil;
+        [_title removeFromSuperview];
+        _title = nil;
     }
     if (adjustScrollView) {
         [scrollView setFrame:frame];
     } else {
         [self updateTitleFrame];
     }
-    [self setTitle:[session_ name]];
+    [self setTitle:[_session name]];
     [self updateScrollViewFrame];
     return YES;
 }
 
-- (NSSize)compactFrame
-{
-    NSSize cellSize = NSMakeSize([[session_ textview] charWidth], [[session_ textview] lineHeight]);
-    NSSize dim = NSMakeSize([session_ columns], [session_ rows]);
+- (void)setOrdinal:(int)ordinal {
+    _ordinal = ordinal;
+    _title.ordinal = ordinal;
+}
+
+- (NSSize)compactFrame {
+    NSSize cellSize = NSMakeSize([[_session textview] charWidth], [[_session textview] lineHeight]);
+    NSSize dim = NSMakeSize([_session columns], [_session rows]);
     NSSize innerSize = NSMakeSize(cellSize.width * dim.width + MARGIN * 2,
                                   cellSize.height * dim.height + VMARGIN * 2);
-    const BOOL hasScrollbar = [[session_ scrollview] hasVerticalScroller];
+    const BOOL hasScrollbar = [[_session scrollview] hasVerticalScroller];
     NSSize size =
         [PTYScrollView frameSizeForContentSize:innerSize
                        horizontalScrollerClass:nil
                          verticalScrollerClass:(hasScrollbar ? [PTYScroller class] : nil)
                                     borderType:NSNoBorder
                                    controlSize:NSRegularControlSize
-                                 scrollerStyle:[[session_ scrollview] scrollerStyle]];
+                                 scrollerStyle:[[_session scrollview] scrollerStyle]];
 
-    if (showTitle_) {
+    if (_showTitle) {
         size.height += kTitleHeight;
     }
     return size;
 }
 
-- (NSSize)maximumPossibleScrollViewContentSize
-{
+- (NSSize)maximumPossibleScrollViewContentSize {
     NSSize size = self.frame.size;
     DLog(@"maximumPossibleScrollViewContentSize. size=%@", [NSValue valueWithSize:size]);
-    if (showTitle_) {
+    if (_showTitle) {
         size.height -= kTitleHeight;
         DLog(@"maximumPossibleScrollViewContentSize: sub title height. size=%@", [NSValue valueWithSize:size]);
     }
 
-    Class verticalScrollerClass = [[[session_ scrollview] verticalScroller] class];
-    if (![[session_ scrollview] hasVerticalScroller]) {
+    Class verticalScrollerClass = [[[_session scrollview] verticalScroller] class];
+    if (![[_session scrollview] hasVerticalScroller]) {
         verticalScrollerClass = nil;
     }
     NSSize contentSize =
             [NSScrollView contentSizeForFrameSize:size
                           horizontalScrollerClass:nil
                             verticalScrollerClass:verticalScrollerClass
-                                       borderType:[[session_ scrollview] borderType]
+                                       borderType:[[_session scrollview] borderType]
                                       controlSize:NSRegularControlSize
-                                    scrollerStyle:[[[session_ scrollview] verticalScroller] scrollerStyle]];
+                                    scrollerStyle:[[[_session scrollview] verticalScroller] scrollerStyle]];
     return contentSize;
 }
 
-- (void)updateTitleFrame
-{
+- (void)updateTitleFrame {
     NSRect aRect = [self frame];
-    if (showTitle_) {
-        [title_ setFrame:NSMakeRect(0,
+    if (_showTitle) {
+        [_title setFrame:NSMakeRect(0,
                                     aRect.size.height - kTitleHeight,
                                     aRect.size.width,
                                     kTitleHeight)];
     }
     [self updateScrollViewFrame];
-    [findView_ setFrameOrigin:NSMakePoint(aRect.size.width - [[findView_ view] frame].size.width - 30,
-                                          aRect.size.height - [[findView_ view] frame].size.height)];
+    [_findView setFrameOrigin:NSMakePoint(aRect.size.width - [[_findView view] frame].size.width - 30,
+                                          aRect.size.height - [[_findView view] frame].size.height)];
 }
 
-- (void)updateScrollViewFrame
-{
-    int lineHeight = [[session_ textview] lineHeight];
+- (void)updateScrollViewFrame {
+    int lineHeight = [[_session textview] lineHeight];
     int margins = VMARGIN * 2;
-    CGFloat titleHeight = showTitle_ ? title_.frame.size.height : 0;
+    CGFloat titleHeight = _showTitle ? _title.frame.size.height : 0;
     NSRect rect = NSMakeRect(0,
                              0,
                              self.frame.size.width,
@@ -683,44 +587,39 @@ static NSDate* lastResizeDate_;
     int rows = floor((rect.size.height - margins) / lineHeight);
     rect.size.height = rows * lineHeight + margins;
     rect.origin.y = self.frame.size.height - titleHeight - rect.size.height;
-    [session_ scrollview].frame = rect;
+    [_session scrollview].frame = rect;
 }
 
-- (void)setTitle:(NSString *)title
-{
+- (void)setTitle:(NSString *)title {
     if (!title) {
         title = @"";
     }
-    title_.title = title;
-    [title_ setNeedsDisplay:YES];
+    _title.title = title;
+    [_title setNeedsDisplay:YES];
 }
 
-- (NSString *)description
-{
-    return [NSString stringWithFormat:@"<%@: %p frame:%@ size:%dx%d>", [self class], self,
-            [NSValue valueWithRect:[self frame]], [session_ columns], [session_ rows]];
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<%@:%p frame:%@ size:%dx%d>", [self class], self,
+            [NSValue valueWithRect:[self frame]], [_session columns], [_session rows]];
 }
 
 #pragma mark SessionTitleViewDelegate
 
 - (NSColor *)tabColor {
-    return session_.tabColor;
+    return _session.tabColor;
 }
 
-- (NSMenu *)menu
-{
-    return [[session_ textview] menuForEvent:nil];
+- (NSMenu *)menu {
+    return [[_session textview] menuForEvent:nil];
 }
 
-- (void)close
-{
-    [[[session_ tab] realParentWindow] closeSessionWithConfirmation:session_];
+- (void)close {
+    [[[_session tab] realParentWindow] closeSessionWithConfirmation:_session];
 }
 
-- (void)beginDrag
-{
+- (void)beginDrag {
     if (![[MovePaneController sharedInstance] session]) {
-        [[MovePaneController sharedInstance] beginDrag:session_];
+        [[MovePaneController sharedInstance] beginDrag:_session];
     }
 }
 

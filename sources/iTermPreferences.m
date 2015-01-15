@@ -59,7 +59,6 @@ NSString *const kPreferenceKeyShowProfileName = @"ShowBookmarkName";  // The key
 NSString *const kPreferenceKeyDimOnlyText = @"DimOnlyText";
 NSString *const kPreferenceKeyDimmingAmount = @"SplitPaneDimmingAmount";
 NSString *const kPreferenceKeyDimInactiveSplitPanes = @"DimInactiveSplitPanes";
-NSString *const kPreferenceKeyAnimateDimming = @"AnimateDimming";
 NSString *const kPreferenceKeyShowWindowBorder = @"UseBorder";
 NSString *const kPreferenceKeyHideScrollbar = @"HideScrollbar";
 NSString *const kPreferenceKeyDisableFullscreenTransparencyByDefault = @"DisableFullscreenTransparency";
@@ -70,6 +69,7 @@ NSString *const kPreferenceKeyLeftOptionRemapping = @"LeftOption";
 NSString *const kPreferenceKeyRightOptionRemapping = @"RightOption";
 NSString *const kPreferenceKeyLeftCommandRemapping = @"LeftCommand";
 NSString *const kPreferenceKeyRightCommandRemapping = @"RightCommand";
+NSString *const kPreferenceKeySwitchPaneModifier = @"SwitchPaneModifier";
 NSString *const kPreferenceKeySwitchTabModifier = @"SwitchTabModifier";
 NSString *const kPreferenceKeySwitchWindowModifier = @"SwitchWindowModifier";
 NSString *const kPreferenceKeyHotkeyEnabled = @"Hotkey";
@@ -86,6 +86,7 @@ NSString *const kPreferenceKeyOptionClickMovesCursor = @"OptionClickMovesCursor"
 NSString *const kPreferenceKeyThreeFingerEmulatesMiddle = @"ThreeFingerEmulates";
 NSString *const kPreferenceKeyFocusFollowsMouse = @"FocusFollowsMouse";
 NSString *const kPreferenceKeyTripleClickSelectsFullWrappedLines = @"TripleClickSelectsFullWrappedLines";
+NSString *const kPreferenceKeyDoubleClickPerformsSmartSelection = @"DoubleClickPerformsSmartSelection";
 
 NSString *const kPreferenceKeyAppVersion = @"iTerm Version";
 NSString *const kPreferenceAutoCommandHistory = @"AutoCommandHistory";
@@ -95,6 +96,7 @@ NSString *const kPreferenceKeyPasteSpecialChunkDelay = @"PasteSpecialChunkDelay"
 NSString *const kPreferenceKeyPasteSpecialSpacesPerTab = @"NumberOfSpacesPerTab";
 NSString *const kPreferenceKeyPasteSpecialTabTransform = @"TabTransform";
 NSString *const kPreferenceKeyPasteSpecialEscapeShellCharsWithBackslash = @"EscapeShellCharsWithBackslash";
+NSString *const kPreferenceKeyPasteSpecialConvertUnicodePunctuation = @"ConvertUnicodePunctuation";
 NSString *const kPreferenceKeyPasteSpecialConvertDosNewlines = @"ConvertDosNewlines";
 NSString *const kPreferenceKeyPasteSpecialRemoveControlCodes = @"RemoveControlCodes";
 NSString *const kPreferenceKeyPasteSpecialBracketedPasteMode = @"BracketedPasteMode";
@@ -174,7 +176,6 @@ static NSMutableDictionary *gObservers;
                   kPreferenceKeyDimOnlyText: @NO,
                   kPreferenceKeyDimmingAmount: @0.4,
                   kPreferenceKeyDimInactiveSplitPanes: @YES,
-                  kPreferenceKeyAnimateDimming: @NO,
                   kPreferenceKeyShowWindowBorder: @NO,
                   kPreferenceKeyHideScrollbar: @NO,
                   kPreferenceKeyDisableFullscreenTransparencyByDefault: @NO,
@@ -185,6 +186,7 @@ static NSMutableDictionary *gObservers;
                   kPreferenceKeyRightOptionRemapping: @(kPreferencesModifierTagRightOption),
                   kPreferenceKeyLeftCommandRemapping: @(kPreferencesModifierTagLeftCommand),
                   kPreferenceKeyRightCommandRemapping: @(kPreferencesModifierTagRightCommand),
+                  kPreferenceKeySwitchPaneModifier: @(kPreferenceModifierTagNone),
                   kPreferenceKeySwitchTabModifier: @(kPreferencesModifierTagEitherCommand),
                   kPreferenceKeySwitchWindowModifier: @(kPreferencesModifierTagCommandAndOption),
                   kPreferenceKeyHotkeyEnabled: @NO,
@@ -201,6 +203,7 @@ static NSMutableDictionary *gObservers;
                   kPreferenceKeyThreeFingerEmulatesMiddle: @NO,
                   kPreferenceKeyFocusFollowsMouse: @NO,
                   kPreferenceKeyTripleClickSelectsFullWrappedLines: @NO,
+                  kPreferenceKeyDoubleClickPerformsSmartSelection: @NO,
 
                   kPreferenceAutoCommandHistory: @NO,
 
@@ -209,6 +212,7 @@ static NSMutableDictionary *gObservers;
                   kPreferenceKeyPasteSpecialSpacesPerTab: @4,
                   kPreferenceKeyPasteSpecialTabTransform: @0,
                   kPreferenceKeyPasteSpecialEscapeShellCharsWithBackslash: @NO,
+                  kPreferenceKeyPasteSpecialConvertUnicodePunctuation: @NO,
                   kPreferenceKeyPasteSpecialConvertDosNewlines: @YES,
                   kPreferenceKeyPasteSpecialRemoveControlCodes: @YES,
                   kPreferenceKeyPasteSpecialBracketedPasteMode: @YES,
@@ -384,7 +388,10 @@ static NSMutableDictionary *gObservers;
             
         case kPreferencesModifierTagEitherOption:
             return NSAlternateKeyMask;
-            
+
+        case kPreferenceModifierTagNone:
+            return NSUIntegerMax;
+
         default:
             NSLog(@"Unexpected value for maskForModifierTag: %d", tag);
             return NSCommandKeyMask | NSAlternateKeyMask;

@@ -26,7 +26,8 @@
 @end
 
 @implementation VT100Terminal {
-    // True if between BeginFile and EndFile codes.
+    // True if receiving a file in multitoken mode, or if between BeginFile and
+    // EndFile codes (which are deprecated).
     BOOL receivingFile_;
 
     // In FinalTerm command mode (user is at the prompt typing a command).
@@ -135,7 +136,7 @@ static const int kMaxScreenRows = 4096;
     self = [super init];
     if (self) {
         _output = [[VT100Output alloc] init];
-        _encoding = NSASCIIStringEncoding;
+        _encoding = _canonicalEncoding = NSASCIIStringEncoding;
         _parser = [[VT100Parser alloc] init];
         _parser.encoding = _encoding;
 
@@ -171,6 +172,13 @@ static const int kMaxScreenRows = 4096;
 }
 
 - (void)setEncoding:(NSStringEncoding)encoding {
+    [self setEncoding:encoding canonical:YES];
+}
+
+- (void)setEncoding:(NSStringEncoding)encoding canonical:(BOOL)canonical {
+    if (canonical) {
+        _canonicalEncoding = encoding;
+    }
     _encoding = encoding;
     _parser.encoding = encoding;
 }
@@ -297,6 +305,8 @@ static const int kMaxScreenRows = 4096;
     self.strictAnsiMode = NO;
     self.allowColumnMode = NO;
     receivingFile_ = NO;
+    _encoding = _canonicalEncoding;
+    _parser.encoding = _canonicalEncoding;
     [delegate_ terminalResetPreservingPrompt:preservePrompt];
 }
 
@@ -987,27 +997,17 @@ static const int kMaxScreenRows = 4096;
         return;
     }
 
-    // Handle sending input to pasteboard/receving files.
+    // Handle file downloads, which come as a series of MULTITOKEN_BODY tokens.
     if (receivingFile_) {
-        if (token->type == VT100CC_BEL) {
-            [delegate_ terminalDidFinishReceivingFile];
-            receivingFile_ = NO;
+        if (token->type == XTERMCC_MULTITOKEN_BODY) {
+            [delegate_ terminalDidReceiveBase64FileData:token.string];
             return;
         } else if (token->type == VT100_ASCIISTRING) {
             [delegate_ terminalDidReceiveBase64FileData:[token stringForAsciiData]];
             return;
-        } else if (token->type == VT100CC_CR ||
-                   token->type == VT100CC_LF) {
-          return;
-        } else  if (token->type == XTERMCC_SET_KVP) {
-          NSArray *kvp = [self keyValuePairInToken:token];
-          if ([kvp[0] isEqualToString:@"EndFile"]) {
-            [self executeXtermSetKvp:token];
-          } else {
-            [delegate_ terminalFileReceiptEndedUnexpectedly];
-            receivingFile_ = NO;
-          }
-          return;
+        } else if (token->type == XTERMCC_MULTITOKEN_END) {
+            [delegate_ terminalDidFinishReceivingFile];
+            return;
         } else {
             [delegate_ terminalFileReceiptEndedUnexpectedly];
             receivingFile_ = NO;
@@ -1323,6 +1323,17 @@ static const int kMaxScreenRows = 4096;
         case VT100CSI_SCS3:
             [delegate_ terminalSetCharset:3 toLineDrawingMode:(token->code=='0')];
             break;
+
+        // The parser sets its own encoding property when these codes are parsed because it must
+        // change synchronously, since it also does decoding in its own thread (possibly long before
+        // this happens in the main thread).
+        case ISO2022_SELECT_UTF_8:
+            _encoding = NSUTF8StringEncoding;
+            break;
+        case ISO2022_SELECT_LATIN_1:
+            _encoding = NSISOLatin1StringEncoding;
+            break;
+
         case VT100CSI_SGR:
         case VT100CSI_SM:
             break;
@@ -1390,11 +1401,11 @@ static const int kMaxScreenRows = 4096;
 
             // XTERM extensions
         case XTERMCC_WIN_TITLE:
-            [delegate_ terminalSetWindowTitle:token.string];
+            [delegate_ terminalSetWindowTitle:[token.string stringByReplacingControlCharsWithQuestionMark]];
             break;
         case XTERMCC_WINICON_TITLE:
-            [delegate_ terminalSetWindowTitle:token.string];
-            [delegate_ terminalSetIconTitle:token.string];
+            [delegate_ terminalSetWindowTitle:[token.string stringByReplacingControlCharsWithQuestionMark]];
+            [delegate_ terminalSetIconTitle:[token.string stringByReplacingControlCharsWithQuestionMark]];
             break;
         case XTERMCC_PASTE64: {
             NSString *decoded = [self decodedBase64PasteCommand:token.string];
@@ -1407,7 +1418,7 @@ static const int kMaxScreenRows = 4096;
             [self executeFinalTermToken:token];
             break;
         case XTERMCC_ICON_TITLE:
-            [delegate_ terminalSetIconTitle:token.string];
+            [delegate_ terminalSetIconTitle:[token.string stringByReplacingControlCharsWithQuestionMark]];
             break;
         case XTERMCC_INSBLNK:
             [delegate_ terminalInsertEmptyCharsAtCursor:token.csi->p[0]];
@@ -1533,8 +1544,18 @@ static const int kMaxScreenRows = 4096;
             [delegate_ terminalPostGrowlNotification:token.string];
             break;
 
+        case XTERMCC_MULTITOKEN_HEADER_SET_KVP:
         case XTERMCC_SET_KVP:
             [self executeXtermSetKvp:token];
+            break;
+
+        case XTERMCC_MULTITOKEN_BODY:
+            // You'd get here if the user stops a file download before it finishes.
+            [delegate_ terminalAppendString:token.string];
+            break;
+
+        case XTERMCC_MULTITOKEN_END:
+            // Handled prior to switch.
             break;
 
         case VT100CC_NULL:
@@ -1902,7 +1923,7 @@ static const int kMaxScreenRows = 4096;
     if (func) {
         if ([func isEqualToString:@"1"]) {
             // Adjusts a color modifier. This attempts to roughly follow the pattern that Eterm
-            // estabilshed.
+            // defines.
             //
             // ESC ] 6 ; 1 ; class ; color ; attribute ; value BEL
             // ESC ] 6 ; 1 ; class ; color ; action BEL

@@ -51,7 +51,7 @@ typedef enum {
     VT100CC_RS = 30,   // Not used
     VT100CC_US = 31,   // Not used
     VT100CC_DEL = 255, // Ignored on input; not stored in buffer.
-    
+
     VT100_WAIT = 1000,
     VT100_NOTSUPPORT,
     VT100_SKIP,
@@ -59,7 +59,7 @@ typedef enum {
     VT100_ASCIISTRING,
     VT100_UNKNOWNCHAR,
     VT100_INVALID_SEQUENCE,
-    
+
     VT100CSI_CPR,                   // Cursor Position Report
     VT100CSI_CUB,                   // Cursor Backward
     VT100CSI_CUD,                   // Cursor Down
@@ -110,7 +110,7 @@ typedef enum {
     VT100CSI_SET_MODIFIERS,         // CSI > Ps; Pm m (Whether to set modifiers for different kinds of key presses; no official name)
     VT100CSI_RESET_MODIFIERS,       // CSI > Ps n (Set all modifiers values to -1, disabled)
     VT100CSI_DECSLRM,               // Set left-right margin
-    
+
     // some xterm extensions
     XTERMCC_WIN_TITLE,            // Set window title
     XTERMCC_ICON_TITLE,
@@ -138,12 +138,25 @@ typedef enum {
     XTERMCC_PUSH_TITLE,
     XTERMCC_POP_TITLE,
     XTERMCC_SET_RGB,
+    // This is not a real xterm code. It is from eTerm, which extended the xterm
+    // protocol for its own purposes. We don't follow the eTerm protocol,
+    // but we follow the template it set.
+    // http://www.eterm.org/docs/view.php?doc=ref#escape
     XTERMCC_PROPRIETARY_ETERM_EXT,
     XTERMCC_SET_PALETTE,
     XTERMCC_SET_KVP,
+    // OSC 1337;File=(args):(data) gets changed by the parser from XTERMCC_SET_KVP to a
+    // series of incidental tokens beginning with XTERMCC_MULTITOKEN_HEADER_SET_KVP.
+    // See comment above XTERMCC_MULTITOKEN_BODY for details.
+    XTERMCC_MULTITOKEN_HEADER_SET_KVP,
     XTERMCC_PASTE64,
     XTERMCC_FINAL_TERM,
-    
+
+    // If a sequence is split into mutiple tokens, the first will be one of the above whose name
+    // includes MULTITOKEN_HEADER, then zero or more of these, and then XTERMCC_MULTITOKEN_END.
+    XTERMCC_MULTITOKEN_BODY,
+    XTERMCC_MULTITOKEN_END,
+
     // Some ansi stuff
     ANSICSI_CHA,     // Cursor Horizontal Absolute
     ANSICSI_VPA,     // Vert Position Absolute
@@ -175,7 +188,13 @@ typedef enum {
     TMUX_EXIT,  // Exit tmux mode
 
     // Ambiguous codes - disambiguated at execution time.
-    VT100CSI_DECSLRM_OR_ANSICSI_SCP
+    VT100CSI_DECSLRM_OR_ANSICSI_SCP,
+
+    // ISO-2022 codes for choosing character encoding. There are a bunch of other encodings that
+    // there are escape codes for but they're really old-fashioned, so only these two are supported
+    // so far.
+    ISO2022_SELECT_LATIN_1,
+    ISO2022_SELECT_UTF_8
 } VT100TerminalTokenType;
 
 typedef struct {

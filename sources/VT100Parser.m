@@ -20,6 +20,7 @@
     int _totalStreamLength;
     int _streamOffset;
     BOOL _saveData;
+    NSMutableDictionary *_savedStateForPartialParse;
     int _tmuxCodeWrap;  // How many levels deep we are in DCS tmux; ESC <escape code> ST. Incremented by DCS tmux ESC and decremented by ST.
 }
 
@@ -28,6 +29,7 @@
     if (self) {
         _totalStreamLength = kDefaultStreamSize;
         _stream = malloc(_totalStreamLength);
+        _savedStateForPartialParse = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -35,6 +37,7 @@
 - (void)dealloc {
     free(_stream);
     [_tmuxParser release];
+    [_savedStateForPartialParse release];
     [super dealloc];
 }
 
@@ -81,19 +84,45 @@
                          vector,
                          token,
                          self.encoding,
-                         _tmuxCodeWrap);
-            if (token->type == XTERMCC_SET_KVP) {
-                if ([token.kvpKey isEqualToString:@"CopyToClipboard"]) {
-                    _saveData = YES;
-                } else if ([token.kvpKey isEqualToString:@"EndCopy"]) {
-                    _saveData = NO;
-                }
-            } else if (token->type == DCS_TMUX && !_tmuxParser) {
-                self.tmuxParser = [[[VT100TmuxParser alloc] init] autorelease];
-            } else if (token->type == DCS_BEGIN_TMUX_CODE_WRAP) {
-                ++_tmuxCodeWrap;
-            } else if (token->type == DCS_END_TMUX_CODE_WRAP) {
-                _tmuxCodeWrap = MAX(0, _tmuxCodeWrap - 1);
+                         _tmuxCodeWrap,
+                         _savedStateForPartialParse);
+            if (token->type != VT100_WAIT) {
+                [_savedStateForPartialParse removeAllObjects];
+            }
+            // Some tokens have synchronous side-effects.
+            switch (token->type) {
+                case XTERMCC_SET_KVP:
+                    if ([token.kvpKey isEqualToString:@"CopyToClipboard"]) {
+                        _saveData = YES;
+                    } else if ([token.kvpKey isEqualToString:@"EndCopy"]) {
+                        _saveData = NO;
+                    }
+                    break;
+
+                case DCS_TMUX:
+                    if (!_tmuxParser) {
+                        self.tmuxParser = [[[VT100TmuxParser alloc] init] autorelease];
+                    }
+                    break;
+
+                case DCS_BEGIN_TMUX_CODE_WRAP:
+                    ++_tmuxCodeWrap;
+                    break;
+
+                case DCS_END_TMUX_CODE_WRAP:
+                    _tmuxCodeWrap = MAX(0, _tmuxCodeWrap - 1);
+                    break;
+
+                case ISO2022_SELECT_LATIN_1:
+                    _encoding = NSISOLatin1StringEncoding;
+                    break;
+
+                case ISO2022_SELECT_UTF_8:
+                    _encoding = NSUTF8StringEncoding;
+                    break;
+
+                default:
+                    break;
             }
             position = datap;
         } else {
