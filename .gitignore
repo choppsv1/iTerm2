@@ -17,6 +17,9 @@ testing_changes.html
 .gitignore
 iTerm.plist
 DerivedData/
+GPATH
+GTAGS
+GRTAGS
 Intermediates/
 NMSSH.framework.dSYM/
 NMSSH/
