@@ -2849,7 +2849,7 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
     }
     result[SESSION_ARRANGEMENT_GUID] = _guid;
 
-    NSString* pwd = [_shell getWorkingDirectory];
+    NSString *pwd = [self currentLocalWorkingDirectory];
     result[SESSION_ARRANGEMENT_WORKING_DIRECTORY] = pwd ? pwd : @"";
     if (self.uniqueID) {
         result[SESSION_UNIQUE_ID] = self.uniqueID;  // TODO: This isn't really unique, it's just the tty number
@@ -6218,6 +6218,25 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
     }
     [_lastDirectory autorelease];
     _lastDirectory = [lastDirectory copy];
+}
+
+- (NSString *)currentLocalWorkingDirectory {
+    // Ask the kernel what the child's process's working directory is.
+    NSString *localDirectoryWithResolvedSymlinks = [_shell getWorkingDirectory];
+
+    if (_lastDirectory) {
+        // See if the last directory from shell integration matches what the kernel reports.
+        // Normally, _lastDirectory will contain unfollowed symlinks, which we'd prefer to use
+        // (since it's what the user sees).  But there's no way to tell if _lastDirectory refers to
+        // local path or one on a remote host. If it resolves to the same location as
+        // localDirectoryWithResolvedSymlinks then it's very likely ok.
+        NSString *resolvedLastDirectory = [_lastDirectory stringByResolvingSymlinksInPath];
+        if ([resolvedLastDirectory isEqualToString:localDirectoryWithResolvedSymlinks]) {
+            return _lastDirectory;
+        }
+    }
+
+    return localDirectoryWithResolvedSymlinks;
 }
 
 - (void)setLastRemoteHost:(VT100RemoteHost *)lastRemoteHost {
