@@ -191,7 +191,6 @@
 #define KEY_APPLICATION_KEYPAD_ALLOWED        @"Application Keypad Allowed"
 #define KEY_META_AS_ALT                       @"Meta Sequence As Alt Sequence"
 
-
 // Advanced
 #define KEY_TRIGGERS                         @"Triggers"  // NSArray of NSDictionary
 #define KEY_SMART_SELECTION_RULES            @"Smart Selection Rules"
