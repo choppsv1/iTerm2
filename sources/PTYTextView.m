@@ -1331,12 +1331,11 @@ static const int kDragThreshold = 3;
     // key then it starts searching from the bottom again.
     [_findOnPageHelper resetFindCursor];
 
-    static BOOL isFirstInteraction = YES;
-    if (isFirstInteraction) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
         iTermApplicationDelegate *appDelegate = iTermApplication.sharedApplication.delegate;
         [appDelegate userDidInteractWithASession];
-        isFirstInteraction = NO;
-    }
+    });
 
     DLog(@"PTYTextView keyDown BEGIN %@", event);
     id delegate = [self delegate];
@@ -4223,13 +4222,13 @@ static double EuclideanDistance(NSPoint p1, NSPoint p2) {
     [theMenu addItemWithTitle:scpTitle
                        action:@selector(downloadWithSCP:)
                 keyEquivalent:@""];
-    [theMenu addItemWithTitle:NSLocalizedStringFromTableInBundle(@"Open Selection as URL",@"iTerm", [NSBundle bundleForClass: [self class]], @"Context menu")
+    [theMenu addItemWithTitle:@"Open Selection as URL"
                      action:@selector(browse:) keyEquivalent:@""];
     [[theMenu itemAtIndex:[theMenu numberOfItems] - 1] setTarget:self];
-    [theMenu addItemWithTitle:NSLocalizedStringFromTableInBundle(@"Search Google for Selection",@"iTerm", [NSBundle bundleForClass: [self class]], @"Context menu")
+    [theMenu addItemWithTitle:@"Search the Web for Selection"
                      action:@selector(searchInBrowser:) keyEquivalent:@""];
     [[theMenu itemAtIndex:[theMenu numberOfItems] - 1] setTarget:self];
-    [theMenu addItemWithTitle:NSLocalizedStringFromTableInBundle(@"Send Email to Selected Address",@"iTerm", [NSBundle bundleForClass: [self class]], @"Context menu")
+    [theMenu addItemWithTitle:@"Send Email to Selected Address"
                      action:@selector(mail:) keyEquivalent:@""];
     [[theMenu itemAtIndex:[theMenu numberOfItems] - 1] setTarget:self];
 
