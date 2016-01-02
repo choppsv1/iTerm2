@@ -5102,7 +5102,7 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
     return [[[self profile] objectForKey:KEY_APPLICATION_KEYPAD_ALLOWED] boolValue];
 }
 
-- (BOOL)metaAsAltKey
+- (BOOL)metaAsAlt
 {
     return [[[self profile] objectForKey:KEY_META_AS_ALT] boolValue];
 }

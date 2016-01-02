@@ -1559,7 +1559,7 @@ DQ
             <connections>
                 <outlet property="_applicationKeypadAllowed" destination="U4H-3c-nZg" id="eUF-jC-ElI"/>
                 <outlet property="_deleteSendsCtrlHButton" destination="5074" id="g14-kJ-aEi"/>
-                <outlet property="_metaAsAltKey" destination="zwf-yB-c87" id="5r9-6f-jua"/>
+                <outlet property="_metaAsAlt" destination="zwf-yB-c87" id="HBZ-bt-Lvy"/>
                 <outlet property="_optionKeySends" destination="4291" id="IFj-h4-wKL"/>
                 <outlet property="_rightOptionKeySends" destination="4293" id="qUt-MU-5Nv"/>
                 <outlet property="delegate" destination="HVI-63-mNz" id="xet-WM-Yj5"/>

@@ -24,7 +24,7 @@ static NSString *const kDeleteKeyString = @"0x7f-0x0";
     IBOutlet NSMatrix *_rightOptionKeySends;
     IBOutlet NSButton *_deleteSendsCtrlHButton;
     IBOutlet NSButton *_applicationKeypadAllowed;
-    IBOutlet NSButton *_metaAsAltKey;
+    IBOutlet NSButton *_metaAsAlt;
 }
 
 - (void)dealloc {
@@ -53,7 +53,7 @@ static NSString *const kDeleteKeyString = @"0x7f-0x0";
                     key:KEY_APPLICATION_KEYPAD_ALLOWED
                    type:kPreferenceInfoTypeCheckbox];
 
-    [self defineControl:_metaAsAltKey
+    [self defineControl:_metaAsAlt
                     key:KEY_META_AS_ALT
                    type:kPreferenceInfoTypeCheckbox];
     
