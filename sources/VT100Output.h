@@ -26,7 +26,7 @@ typedef NS_ENUM(NSInteger, MouseFormat) {
 @property(nonatomic, assign) BOOL keypadMode;
 @property(nonatomic, assign) MouseFormat mouseFormat;
 @property(nonatomic, assign) BOOL cursorMode;
-@property(nonatomic, assign) BOOL optionIsMetaForSpecialKeys;
+@property(nonatomic, assign) BOOL metaAsAlt;
 
 - (NSData *)keyArrowUp:(unsigned int)modflag;
 - (NSData *)keyArrowDown:(unsigned int)modflag;

@@ -49,6 +49,7 @@
 @property(nonatomic, assign) BOOL cursorMode;
 @property(nonatomic, assign) BOOL keypadMode;  // YES=application, NO=numeric
 @property(nonatomic, assign) BOOL allowKeypadMode;
+@property(nonatomic, assign) BOOL metaAsAlt;
 
 // http://www.xfree86.org/current/ctlseqs.html#Bracketed%20Paste%20Mode
 @property(nonatomic, readonly) BOOL bracketedPasteMode;

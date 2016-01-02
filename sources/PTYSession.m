@@ -381,8 +381,6 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
         // Allocate screen, shell, and terminal objects
         _shell = [[PTYTask alloc] init];
         _terminal = [[VT100Terminal alloc] init];
-        _terminal.output.optionIsMetaForSpecialKeys =
-            [iTermAdvancedSettingsModel optionIsMetaForSpecialChars];
         _screen = [[VT100Screen alloc] initWithTerminal:_terminal];
         NSParameterAssert(_shell != nil && _terminal != nil && _screen != nil);
 
@@ -2724,6 +2722,8 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
                                                               inProfile:aDict]];
     [_terminal setAllowKeypadMode:[iTermProfilePreferences boolForKey:KEY_APPLICATION_KEYPAD_ALLOWED
                                                             inProfile:aDict]];
+    [_terminal setMetaAsAlt:[iTermProfilePreferences boolForKey:KEY_META_AS_ALT
+                                                      inProfile:aDict]];
     [_screen setUnlimitedScrollback:[iTermProfilePreferences boolForKey:KEY_UNLIMITED_SCROLLBACK
                                                               inProfile:aDict]];
     [_screen setMaxScrollbackLines:[iTermProfilePreferences intForKey:KEY_SCROLLBACK_LINES
@@ -5100,6 +5100,11 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
 - (BOOL)applicationKeypadAllowed
 {
     return [[[self profile] objectForKey:KEY_APPLICATION_KEYPAD_ALLOWED] boolValue];
+}
+
+- (BOOL)metaAsAlt
+{
+    return [[[self profile] objectForKey:KEY_META_AS_ALT] boolValue];
 }
 
 // Contextual menu

@@ -48,6 +48,7 @@ NSString *const kTerminalStateMouseFormatKey = @"Mouse Format";
 NSString *const kTerminalStateCursorModeKey = @"Cursor Mode";
 NSString *const kTerminalStateKeypadModeKey = @"Keypad Mode";
 NSString *const kTerminalStateAllowKeypadModeKey = @"Allow Keypad Mode";
+NSString *const kTerminalStateMetaAsAlt = @"Meta As Alt";
 NSString *const kTerminalStateBracketedPasteModeKey = @"Bracketed Paste Mode";
 NSString *const kTerminalStateAnsiModeKey = @"ANSI Mode";
 NSString *const kTerminalStateNumLockKey = @"Numlock";
@@ -214,6 +215,7 @@ static const int kMaxScreenRows = 4096;
         _mouseFormat = MOUSE_FORMAT_XTERM;
 
         _allowKeypadMode = YES;
+        _metaAsAlt = NO;
 
         numLock_ = YES;
         [self saveCursor];  // initialize save area
@@ -364,6 +366,12 @@ static const int kMaxScreenRows = 4096;
     if (!allow) {
         self.keypadMode = NO;
     }
+}
+
+- (void)setMetaAsAlt:(BOOL)useAlt
+{
+    _metaAsAlt = useAlt;
+    _output.metaAsAlt = useAlt;
 }
 
 - (screen_char_t)foregroundColorCode
@@ -2390,6 +2398,7 @@ static const int kMaxScreenRows = 4096;
            kTerminalStateCursorModeKey: @(self.cursorMode),
            kTerminalStateKeypadModeKey: @(self.keypadMode),
            kTerminalStateAllowKeypadModeKey: @(self.allowKeypadMode),
+           kTerminalStateMetaAsAlt: @(self.metaAsAlt),
            kTerminalStateBracketedPasteModeKey: @(self.bracketedPasteMode),
            kTerminalStateAnsiModeKey: @(ansiMode_),
            kTerminalStateNumLockKey: @(numLock_),
@@ -2425,6 +2434,8 @@ static const int kMaxScreenRows = 4096;
     self.cursorMode = [dict[kTerminalStateCursorModeKey] boolValue];
     self.keypadMode = [dict[kTerminalStateKeypadModeKey] boolValue];
     self.allowKeypadMode = [dict[kTerminalStateAllowKeypadModeKey] boolValue];
+    self.metaAsAlt = [dict[kTerminalStateMetaAsAlt] boolValue];
+
     self.bracketedPasteMode = [dict[kTerminalStateBracketedPasteModeKey] boolValue];
     ansiMode_ = [dict[kTerminalStateAnsiModeKey] boolValue];
     numLock_ = [dict[kTerminalStateNumLockKey] boolValue];

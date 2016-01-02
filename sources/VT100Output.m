@@ -109,7 +109,7 @@ typedef enum {
     self = [super init];
     if (self) {
         self.termTypeIsValid = YES;
-        _optionIsMetaForSpecialKeys = YES;
+        _metaAsAlt = NO;
     }
     return self;
 }
@@ -623,7 +623,7 @@ typedef enum {
         if (modflag & NSShiftKeyMask) {
             theIndex |= 1;
         }
-        int *modValues = _optionIsMetaForSpecialKeys ? metaModifierValues : altModifierValues;
+        int *modValues = _metaAsAlt ? altModifierValues : metaModifierValues;
         mod = modValues[theIndex];
         
         if (mod) {

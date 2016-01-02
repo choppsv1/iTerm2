@@ -80,7 +80,6 @@
 + (double)idleTimeSeconds;
 
 + (double)findDelaySeconds;
-+ (BOOL)optionIsMetaForSpecialChars;
 
 + (BOOL)startDebugLoggingAutomatically;
 + (BOOL)aboutToPasteTabs;
