@@ -4841,9 +4841,62 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
             return;
         }
 
+
         BOOL rightAltPressed = (modflag & NSRightAlternateKeyMask) == NSRightAlternateKeyMask;
         BOOL leftAltPressed = (modflag & NSAlternateKeyMask) == NSAlternateKeyMask && !rightAltPressed;
 
+        /* Xterm values */
+#define XTERM_UNMOD   1
+#define XTERM_SHIFT   1
+#define XTERM_ALT     2
+#define XTERM_CTRL    4
+#define XTERM_META    8
+        uint mod_parm = XTERM_UNMOD;
+        if (modflag & NSAlternateKeyMask)
+            mod_parm += XTERM_ALT;
+        if (modflag & NSControlKeyMask)
+            mod_parm += XTERM_CTRL;
+        if (modflag & NSCommandKeyMask)
+            mod_parm += XTERM_META;
+
+        /* Other combos that don't work */
+        /*
+           UNMOD = 1
+           ALT == 3
+           CTRL == 5
+           CTRL + SHIFT == 6
+           CTRL + ALT == 7
+           ALT + CMD == 11
+           CTRL + CMD == 13
+           ALT CTRL + CMD == 15
+        */
+        
+        int char_value = 0;
+        if (keystr.length == 1)
+            char_value = [keystr characterAtIndex:0];
+        BOOL is_ascii = (keystr.length == 1 && char_value <= 0x7f);
+        BOOL do_mod_seq = FALSE;
+        
+        if (is_ascii && mod_parm > XTERM_UNMOD) {
+            if (isalpha(char_value) || iscntrl(char_value)){
+                /*
+                 * We can't indicate shifted control sequence so that requires sequence
+                 * (^L but no ^l)
+                 * Likewise we can't show shifted control alt sequences
+                 * (^[l ^[L ^[^L but no ^[^l)
+                 */
+                if ((modflag & (NSControlKeyMask|NSShiftKeyMask)) == (NSControlKeyMask|NSShiftKeyMask)) {
+                    do_mod_seq = TRUE;
+                    mod_parm += XTERM_SHIFT;
+                } else if (modflag & NSCommandKeyMask)
+                    do_mod_seq = TRUE;
+            } else {
+                /* for non-letters we generate other mod sequence for control */
+                do_mod_seq = TRUE;
+                if (modflag & NSShiftKeyMask)
+                    mod_parm += XTERM_SHIFT;
+            }
+        }
         // No special binding for this key combination.
         if (modflag & NSFunctionKeyMask) {
             DLog(@"PTYSession keyDown is a function key");
@@ -4923,6 +4976,14 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
             }
             if (mode == OPT_ESC) {
                 send_pchr = '\e';
+                if (do_mod_seq) {
+                    NSData *data = [[NSString stringWithFormat:@"[%d;%du",
+                                     char_value,
+                                     mod_parm]
+                                    dataUsingEncoding:NSASCIIStringEncoding allowLossyConversion:YES];
+                    send_str = [data bytes];
+                    send_strlen = [data length];
+                }
             } else if (mode == OPT_META && send_str != NULL && send_strlen > 0) {
                 // I'm pretty sure this is a no-win situation when it comes to any encoding other
                 // than ASCII, but see here for some ideas about this mess:
@@ -4939,9 +5000,18 @@ static NSTimeInterval kMinimumPartialLineTriggerCheckInterval = 0.5;
                 data = [keystr dataUsingEncoding:_terminal.encoding];
             } else {
                 DLog(@"PTYSession keyDown ascii");
-                // Commit a00a9385b2ed722315ff4d43e2857180baeac2b4 in old-iterm suggests this is
-                // necessary for some Japanese input sources, but is vague.
-                data = [keystr dataUsingEncoding:NSUTF8StringEncoding];
+
+                if (do_mod_seq) {
+                    data = [[NSString stringWithFormat:@"[%d;%du",
+                             char_value,
+                             mod_parm]
+                            dataUsingEncoding:NSASCIIStringEncoding allowLossyConversion:YES];
+                    send_pchr = '\e';
+                } else {
+                    // Commit a00a9385b2ed722315ff4d43e2857180baeac2b4 in old-iterm suggests this is
+                    // necessary for some Japanese input sources, but is vague.
+                    data = [keystr dataUsingEncoding:NSUTF8StringEncoding];
+                }
             }
 
             // Enter key is on numeric keypad, but not marked as such
